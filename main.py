@@ -9,7 +9,7 @@ from calculations import (
     calculate_sts,
     calculate_ema
 )
-from classification import classify_bias, classify_phase
+from classification import classify_phase
 from telegram import send_message
 from fetch_nse import (
     fetch_fii_cash,
@@ -17,9 +17,10 @@ from fetch_nse import (
     fetch_index_pcr
 )
 
-# --------------------------------------------------
-# Logging Setup (Render Friendly)
-# --------------------------------------------------
+# ==========================================================
+# Logging Setup (Production Friendly)
+# ==========================================================
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -85,7 +86,7 @@ def run():
     logging.info("Raw data stored successfully")
 
     # ==========================================================
-    # 3️⃣ FETCH 30-DAY HISTORICAL DATA
+    # 3️⃣ FETCH HISTORICAL DATA (30 Days)
     # ==========================================================
 
     cash_hist = fetch_last_n("fii_cash_raw", "fii_net", 30)
@@ -94,7 +95,7 @@ def run():
     pcr_hist = fetch_last_n("options_summary_raw", "pcr", 30)
 
     if min(len(cash_hist), len(pos_hist), len(oi_hist), len(pcr_hist)) < 20:
-        logging.warning("Insufficient historical data (need 30 days).")
+        logging.warning("Insufficient historical data.")
         send_message("⚠ Institutional Engine: Not enough historical data yet.")
         return
 
@@ -121,7 +122,6 @@ def run():
 
     irs = calculate_ema(sts, previous_irs, period=10)
 
-    bias = classify_bias(sts)
     phase = classify_phase(irs)
 
     logging.info("IRS calculated and classified")
@@ -142,14 +142,13 @@ def run():
         "trade_date": str(today),
         "sts": round(sts, 3),
         "irs": round(irs, 3),
-        "market_phase": phase,
-        "tomorrow_bias": bias
+        "market_phase": phase
     })
 
     logging.info("Derived data stored successfully")
 
     # ==========================================================
-    # 7️⃣ TELEGRAM MESSAGE
+    # 7️⃣ TELEGRAM MESSAGE (Institutional Safe Format)
     # ==========================================================
 
     message = f"""
@@ -174,9 +173,12 @@ The current regime score reflects prevailing institutional positioning within th
 Data-driven analysis. Not investment advice.
 """
 
+    send_message(message)
+    logging.info("Telegram report sent successfully")
+
 
 # ==========================================================
-# EXECUTION WRAPPER (PRODUCTION SAFE)
+# EXECUTION WRAPPER (Production Safe)
 # ==========================================================
 
 if __name__ == "__main__":
@@ -186,8 +188,6 @@ if __name__ == "__main__":
         logging.exception("Institutional Engine Failed")
 
         try:
-            send_message(
-                f"⚠ Institutional Engine Failed:\n{str(e)}"
-            )
+            send_message(f"⚠ Institutional Engine Failed:\n{str(e)}")
         except Exception:
             pass
