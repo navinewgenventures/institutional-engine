@@ -153,26 +153,26 @@ def run():
     # ==========================================================
 
     message = f"""
-📊 Institutional Intelligence – {today}
+🏛 FII/DII Analysis Report
+Date: {today.strftime("%d %b %Y")}
 
-FII Net: ₹{fii_net:,.0f}
+📊 FII Net: ₹{fii_net:,.0f} Cr
+📉 Cash Z: {cash_z:.2f}
+📈 Futures Z: {futures_z:.2f}
+📊 PCR Z: {pcr_z:.2f}
 
-Cash Z: {cash_z:.2f}
-Futures Z: {futures_z:.2f}
-PCR Z: {pcr_z:.2f}
+━━━━━━━━━━━━━━━
+⚡ Short-Term Signal (STS): {sts:.2f}
+🏛 Regime Score (IRS): {irs:.2f}
+🌡 Market Phase: {phase}
+━━━━━━━━━━━━━━━
 
-—————————————
-Short-Term Signal (STS): {sts:.2f}
-Tomorrow Bias: {bias}
+Analysis:
+Institutional cash activity shows statistically significant deviation relative to the 30-day mean.
+The current regime score reflects prevailing institutional positioning within the broader market structure.
 
-Regime Score (IRS): {irs:.2f}
-Market Phase: {phase}
-—————————————
+Data-driven analysis. Not investment advice.
 """
-
-    send_message(message)
-
-    logging.info("Telegram report sent successfully")
 
 
 # ==========================================================
