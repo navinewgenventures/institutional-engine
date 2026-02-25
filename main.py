@@ -175,16 +175,19 @@ Market Phase: {phase}
     logging.info("Telegram report sent successfully")
 
 
-# --------------------------------------------------
-# EXECUTION WRAPPER (CRITICAL FOR RENDER CRON)
-# --------------------------------------------------
+# ==========================================================
+# EXECUTION WRAPPER (PRODUCTION SAFE)
+# ==========================================================
 
 if __name__ == "__main__":
     try:
         run()
     except Exception as e:
         logging.exception("Institutional Engine Failed")
+
         try:
-            
+            send_message(
+                f"⚠ Institutional Engine Failed:\n{str(e)}"
+            )
         except Exception:
             pass
