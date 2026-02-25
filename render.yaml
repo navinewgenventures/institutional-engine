@@ -1,0 +1,7 @@
+services:
+  - type: cron
+    name: institutional-engine
+    runtime: python
+    schedule: "0 14 * * 1-5"   # 7:30 PM IST = 14:00 UTC approx
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python main.py"
