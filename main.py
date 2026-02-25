@@ -37,7 +37,10 @@ def run():
     # 1️⃣ FETCH LIVE NSE DATA
     # ==========================================================
 
-    fii_buy, fii_sell, fii_net = fetch_fii_cash()
+    from fetch_nse import fetch_institutional_cash
+
+    fii_buy, fii_sell, fii_net, dii_buy, dii_sell, dii_net = fetch_institutional_cash()
+    combined_net = fii_net + dii_net
 
     # ---- Futures Fetch (Safe Mode) ----
     try:
@@ -152,26 +155,29 @@ def run():
     # ==========================================================
 
     message = f"""
-🏛 FII/DII Analysis Report
-Date: {today.strftime("%d %b %Y")}
+    🏛 FII/DII Analysis Report
+    Date: {today.strftime("%d %b %Y")}
 
-📊 FII Net: ₹{fii_net:,.0f} Cr
-📉 Cash Z: {cash_z:.2f}
-📈 Futures Z: {futures_z:.2f}
-📊 PCR Z: {pcr_z:.2f}
+    📊 FII Net: ₹{fii_net:,.0f} Cr
+    📊 DII Net: ₹{dii_net:,.0f} Cr
+    📊 Combined (FII+DII): ₹{combined_net:,.0f} Cr
 
-━━━━━━━━━━━━━━━
-⚡ Short-Term Signal (STS): {sts:.2f}
-🏛 Regime Score (IRS): {irs:.2f}
-🌡 Market Phase: {phase}
-━━━━━━━━━━━━━━━
+    📉 Cash Z: {cash_z:.2f}
+    📈 Futures Z: {futures_z:.2f}
+    📊 PCR Z: {pcr_z:.2f}
 
-Analysis:
-Institutional cash activity shows statistically significant deviation relative to the 30-day mean.
-The current regime score reflects prevailing institutional positioning within the broader market structure.
+    ━━━━━━━━━━━━━━━
+    ⚡ Short-Term Signal (STS): {sts:.2f}
+    🏛 Regime Score (IRS): {irs:.2f}
+    🌡 Market Phase: {phase}
+    ━━━━━━━━━━━━━━━
 
-Data-driven analysis. Not investment advice.
-"""
+    Analysis:
+    Institutional cash activity shows statistically significant deviation relative to the 30-day mean.
+    The current regime score reflects prevailing institutional positioning within the broader market structure.
+
+    Data-driven analysis. Not investment advice.
+    """
 
     send_message(message)
     logging.info("Telegram report sent successfully")

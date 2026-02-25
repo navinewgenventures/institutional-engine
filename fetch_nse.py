@@ -129,3 +129,42 @@ def fetch_index_pcr():
     pcr = total_put_oi / total_call_oi if total_call_oi != 0 else 1
 
     return total_call_oi, total_put_oi, round(pcr, 3)
+
+    # ==========================================================
+    # 4 Institutional Cash
+    # ==========================================================
+
+def fetch_institutional_cash():
+    """
+    Returns: (fii_buy, fii_sell, fii_net, dii_buy, dii_sell, dii_net)
+    All values are floats (₹ Crore), pulled from NSE participant-wise cash data.
+    """
+    session = create_session()
+    url = BASE_URL + "/api/fiidiiTradeReact"
+    data = safe_get_json(session, url)
+
+    # NSE returns a list of rows, typically containing DII and FII/FPI entries for a date
+    fii = None
+    dii = None
+
+    for row in data:
+        cat = (row.get("category") or "").strip().upper()
+        if cat == "FII/FPI":
+            fii = row
+        elif cat == "DII":
+            dii = row
+
+    if not fii:
+        raise KeyError("FII/FPI row not found in NSE payload")
+    if not dii:
+        raise KeyError("DII row not found in NSE payload")
+
+    fii_buy = float(fii["buyValue"])
+    fii_sell = float(fii["sellValue"])
+    fii_net = float(fii["netValue"])
+
+    dii_buy = float(dii["buyValue"])
+    dii_sell = float(dii["sellValue"])
+    dii_net = float(dii["netValue"])
+
+    return fii_buy, fii_sell, fii_net, dii_buy, dii_sell, dii_net
