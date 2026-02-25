@@ -1,42 +1,24 @@
 import requests
 import logging
-import time
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 
-def send_message(text, retries=3):
-
+def send_message(message: str):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         logging.error("Telegram credentials missing.")
         return
 
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": text
+        "text": message,
+        "parse_mode": "Markdown"
     }
 
-    for attempt in range(retries):
-        try:
-            response = requests.post(
-                BASE_URL,
-                json=payload,
-                timeout=10
-            )
-            response.raise_for_status()
-            return
-
-        except Exception:
-            logging.warning(
-                f"Telegram send failed (Attempt {attempt+1}/{retries})"
-            )
-            time.sleep(2)
-
-    logging.error("Telegram message permanently failed.")
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        logging.info("Telegram report sent successfully")
+    except Exception as e:
+        logging.error(f"Telegram send failed: {e}")
