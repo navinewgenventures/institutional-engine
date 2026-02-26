@@ -12,13 +12,14 @@ from calculations import (
 from classification import classify_phase
 from telegram import send_message
 from fetch_nse import (
-    fetch_fii_cash,
+    NSEClient,
+    fetch_institutional_cash,
     fetch_fii_futures,
     fetch_index_pcr
 )
 
 # ==========================================================
-# Logging Setup (Production Friendly)
+# Logging Setup
 # ==========================================================
 
 logging.basicConfig(
@@ -34,25 +35,37 @@ def run():
     logging.info(f"Starting Institutional Engine for {today}")
 
     # ==========================================================
-    # 1️⃣ FETCH LIVE NSE DATA
+    # 1️⃣ FETCH LIVE NSE DATA (Single Session)
     # ==========================================================
 
-    from fetch_nse import fetch_institutional_cash
+    client = NSEClient.create()
 
-    fii_buy, fii_sell, fii_net, dii_buy, dii_sell, dii_net = fetch_institutional_cash()
+    fii_buy, fii_sell, fii_net, dii_buy, dii_sell, dii_net = fetch_institutional_cash(client)
     combined_net = fii_net + dii_net
 
-    # ---- Futures Fetch (Safe Mode) ----
+    # ==========================================================
+    # PREVENT DUPLICATE SEND (Send only when data changes)
+    # ==========================================================
+
+    existing_today = fetch_last_n("fii_cash_raw", "fii_net", 1)
+
+    if existing_today:
+        last_stored_net = existing_today[0]
+        if round(last_stored_net, 2) == round(fii_net, 2):
+            logging.info("FII data unchanged. Skipping Telegram send.")
+            return
+
+    # ---- Futures Fetch ----
     try:
-        net_position, total_oi = fetch_fii_futures()
+        net_position, total_oi = fetch_fii_futures(client)
     except Exception:
         logging.warning("Futures fetch failed. Using neutral fallback.")
         net_position = 0
         total_oi = 0
 
-    # ---- PCR Fetch (Safe Mode) ----
+    # ---- PCR Fetch ----
     try:
-        total_call_oi, total_put_oi, pcr_today = fetch_index_pcr()
+        total_call_oi, total_put_oi, pcr_today = fetch_index_pcr(client)
     except Exception:
         logging.warning("PCR fetch failed. Using neutral fallback.")
         total_call_oi = 0
@@ -72,6 +85,13 @@ def run():
         "fii_net": fii_net
     })
 
+    upsert("dii_cash_raw", {
+        "trade_date": str(today),
+        "dii_buy": dii_buy,
+        "dii_sell": dii_sell,
+        "dii_net": dii_net
+    })
+
     upsert("index_futures_raw", {
         "trade_date": str(today),
         "net_position": net_position,
@@ -89,7 +109,7 @@ def run():
     logging.info("Raw data stored successfully")
 
     # ==========================================================
-    # 3️⃣ FETCH HISTORICAL DATA (30 Days)
+    # 3️⃣ FETCH HISTORICAL DATA
     # ==========================================================
 
     cash_hist = fetch_last_n("fii_cash_raw", "fii_net", 30)
@@ -99,11 +119,10 @@ def run():
 
     if min(len(cash_hist), len(pos_hist), len(oi_hist), len(pcr_hist)) < 20:
         logging.warning("Insufficient historical data.")
-        send_message("⚠ Institutional Engine: Not enough historical data yet.")
         return
 
     # ==========================================================
-    # 4️⃣ CALCULATE Z-SCORES
+    # 4️⃣ CALCULATE SIGNALS
     # ==========================================================
 
     cash_z = calculate_z_score(fii_net, cash_hist)
@@ -114,23 +133,16 @@ def run():
     futures_z = calculate_futures_z(position_z, oi_z)
     sts = calculate_sts(futures_z, cash_z, pcr_z)
 
-    logging.info("Z-scores and STS calculated")
-
-    # ==========================================================
-    # 5️⃣ CALCULATE IRS (EMA)
-    # ==========================================================
-
     previous_irs_list = fetch_last_n("institutional_regime", "irs", 1)
     previous_irs = previous_irs_list[0] if previous_irs_list else sts
 
     irs = calculate_ema(sts, previous_irs, period=10)
-
     phase = classify_phase(irs)
 
-    logging.info("IRS calculated and classified")
+    logging.info("Signals calculated")
 
     # ==========================================================
-    # 6️⃣ STORE DERIVED DATA
+    # 5️⃣ STORE DERIVED DATA
     # ==========================================================
 
     upsert("institutional_zscores", {
@@ -151,40 +163,53 @@ def run():
     logging.info("Derived data stored successfully")
 
     # ==========================================================
-    # 7️⃣ TELEGRAM MESSAGE (Institutional Safe Format)
+    # 6️⃣ FLOW STRUCTURE CLASSIFICATION
+    # ==========================================================
+
+    if fii_net > 0 and dii_net > 0:
+        flow_structure = "Institutional Accumulation"
+    elif fii_net > 0 and dii_net < 0:
+        flow_structure = "Foreign Accumulation | Domestic Distribution"
+    elif fii_net < 0 and dii_net > 0:
+        flow_structure = "Domestic Absorption"
+    elif fii_net < 0 and dii_net < 0:
+        flow_structure = "Institutional Distribution"
+    else:
+        flow_structure = "Neutral Flow"
+
+    # ==========================================================
+    # 7️⃣ TELEGRAM MESSAGE
     # ==========================================================
 
     message = f"""
-    🏛 FII/DII Analysis Report
-    Date: {today.strftime("%d %b %Y")}
+🏛 Institutional Flow Dashboard
+Date: {today.strftime("%d %b %Y")}
 
-    📊 FII Net: ₹{fii_net:,.0f} Cr
-    📊 DII Net: ₹{dii_net:,.0f} Cr
-    📊 Combined (FII+DII): ₹{combined_net:,.0f} Cr
+💰 FII Net: ₹{fii_net:,.0f} Cr
+🏦 DII Net: ₹{dii_net:,.0f} Cr
+🔁 Combined Net: ₹{combined_net:,.0f} Cr
 
-    📉 Cash Z: {cash_z:.2f}
-    📈 Futures Z: {futures_z:.2f}
-    📊 PCR Z: {pcr_z:.2f}
+───────────────
+📊 Cash Z: {cash_z:.2f}
+📈 Futures Z: {futures_z:.2f}
+📊 PCR Z: {pcr_z:.2f}
+───────────────
+⚡ STS: {sts:.2f}
+🏛 IRS: {irs:.2f}
+🌡 Phase: {phase}
+───────────────
+🧠 Flow Structure: {flow_structure}
 
-    ━━━━━━━━━━━━━━━
-    ⚡ Short-Term Signal (STS): {sts:.2f}
-    🏛 Regime Score (IRS): {irs:.2f}
-    🌡 Market Phase: {phase}
-    ━━━━━━━━━━━━━━━
-
-    Analysis:
-    Institutional cash activity shows statistically significant deviation relative to the 30-day mean.
-    The current regime score reflects prevailing institutional positioning within the broader market structure.
-
-    Data-driven analysis. Not investment advice.
-    """
+Quantitative institutional positioning analysis.
+For informational purposes only.
+"""
 
     send_message(message)
     logging.info("Telegram report sent successfully")
 
 
 # ==========================================================
-# EXECUTION WRAPPER (Production Safe)
+# EXECUTION WRAPPER
 # ==========================================================
 
 if __name__ == "__main__":
@@ -192,7 +217,6 @@ if __name__ == "__main__":
         run()
     except Exception as e:
         logging.exception("Institutional Engine Failed")
-
         try:
             send_message(f"⚠ Institutional Engine Failed:\n{str(e)}")
         except Exception:
